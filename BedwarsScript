@@ -1,12 +1,16 @@
 
 if _G.bw_executed then
-    for _, info in pairs(_G.bw_bee   or {}) do if info.text then info.text:Remove() end end
+    for _, info in pairs(_G.bw_bee   or {}) do if info.text then info.text:Remove() end if info.box then info.box:Remove() end end
     for _, info in pairs(_G.bw_metal or {}) do if info.text then info.text:Remove() end if info.box then info.box:Remove() end end
     for _, info in pairs(_G.bw_elder or {}) do if info.text then info.text:Remove() end if info.box then info.box:Remove() end end
     for _, info in pairs(_G.bw_star  or {}) do if info.text then info.text:Remove() end if info.box then info.box:Remove() end end
     if _G.bw_heartbeat then _G.bw_heartbeat:Disconnect() end
+    if _G.bw_connections then
+        for _, c in pairs(_G.bw_connections) do pcall(function() c:Disconnect() end) end
+    end
 end
 _G.bw_executed = true
+_G.bw_connections = {}
 
 local beeTracks   = {} ; _G.bw_bee   = beeTracks
 local metalTracks = {} ; _G.bw_metal = metalTracks
@@ -16,10 +20,38 @@ local starTracks  = {} ; _G.bw_star  = starTracks
 local RunService = game:GetService("RunService")
 
 local cfg = {
-    bee   = { enabled = false, color = Color3.fromRGB(255, 200, 0), maxDist = 300 },
-    metal = { enabled = false, color = Color3.fromRGB(180, 180, 180) },
-    elder = { enabled = false, color = Color3.fromRGB(180, 180, 180) },
-    star  = { enabled = false, color = Color3.fromRGB(180, 180, 180) },
+    bee = {
+        enabled  = false,
+        name     = false,
+        box      = false,
+        distance = false,
+        color    = Color3.fromRGB(180, 180, 180),
+        maxDist  = 300
+    },
+    metal = {
+        enabled  = false,
+        name     = false,
+        box      = false,
+        distance = false,
+        color    = Color3.fromRGB(180, 180, 180),
+        maxDist  = 300
+    },
+    elder = {
+        enabled  = false,
+        name     = false,
+        box      = false,
+        distance = false,
+        color    = Color3.fromRGB(180, 180, 180),
+        maxDist  = 300
+    },
+    star = {
+        enabled  = false,
+        name     = false,
+        box      = false,
+        distance = false,
+        color    = Color3.fromRGB(180, 180, 180),
+        maxDist  = 300
+    },
 }
 
 local function lerp(a, b, t) return a + (b - a) * t end
@@ -44,155 +76,258 @@ local function newBox(color)
     return b
 end
 
-local function scan_bee()
-    local valid = {}
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if obj.Name == "Bee" and obj:IsA("Model") then
-            local part = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Part") or obj:FindFirstChildWhichIsA("BasePart")
-            if part then
-                valid[obj] = true
-                if not beeTracks[obj] then
-                    beeTracks[obj] = { root = part, text = newText("", cfg.bee.color), lastPos = nil }
-                end
-            end
-        end
+local function getHRP()
+    local c = game.Players.LocalPlayer.Character
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
+
+local function addBee(obj)
+    if typeof(obj) ~= "Instance" then return end
+    if not (obj.Name == "Bee" and obj:IsA("Model")) then return end
+    local part = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Part") or obj:FindFirstChildWhichIsA("BasePart")
+    if part and not beeTracks[obj] then
+        beeTracks[obj] = { root = part, text = newText("", cfg.bee.color), box = newBox(cfg.bee.color), lastPos = nil }
     end
-    for obj, info in pairs(beeTracks) do
-        if not valid[obj] then info.text:Remove() ; beeTracks[obj] = nil end
+end
+
+local function removeBee(obj)
+    if beeTracks[obj] then
+        beeTracks[obj].text:Remove() ; beeTracks[obj].box:Remove()
+        beeTracks[obj] = nil
     end
 end
 
 local function update_bee()
-    local hrp = (game.Players.LocalPlayer.Character or {}).HumanoidRootPart
+    local hrp = getHRP()
     if not hrp then return end
-    for _, info in pairs(beeTracks) do
+    for obj, info in pairs(beeTracks) do
         local root = info.root
-        if root and root.Parent then
-            local screen, on = WorldToScreen(root.Position)
+        if not cfg.bee.enabled then hide(info)
+        elseif not root or not root.Parent or not root.Position then
+            hide(info)
+            beeTracks[obj] = nil
+        else
             local dist = (hrp.Position - root.Position).Magnitude
-            if on and dist <= cfg.bee.maxDist then
+            if dist > cfg.bee.maxDist then hide(info) ; continue end
+            local screen, on = WorldToScreen(root.Position)
+            if on then
                 local tp = Vector2.new(screen.X, screen.Y)
                 if info.lastPos then
                     info.lastPos = Vector2.new(lerp(info.lastPos.X, tp.X, 0.3), lerp(info.lastPos.Y, tp.Y, 0.3))
                 else info.lastPos = tp end
+                local hp, on1 = WorldToScreen(root.Position + Vector3.new(0, 2, 0))
+                local lp, on2 = WorldToScreen(root.Position - Vector3.new(0, 2, 0))
+                if on1 and on2 and cfg.bee.box then
+                    local h = math.abs(hp.Y - lp.Y) ; local w = h / 1.5
+                    info.box.Position = Vector2.new(hp.X - w/2, hp.Y)
+                    info.box.Size = Vector2.new(w, h)
+                    info.box.Color = cfg.bee.color
+                    info.box.Visible = true
+                else info.box.Visible = false end
+                local label = ""
+                if cfg.bee.name then label = "Bee" end
+                if cfg.bee.distance then label = label .. (cfg.bee.name and "\n" or "") .. math.floor(dist) .. "m" end
                 info.text.Position = info.lastPos
-                info.text.Text = math.floor(dist) .. "m"
-                info.text.Transparency = 1 - (dist / cfg.bee.maxDist)
                 info.text.Color = cfg.bee.color
-                info.text.Visible = true
+                info.text.Transparency = 1 - (dist / cfg.bee.maxDist)
+                info.text.Text = label
+                info.text.Visible = label ~= ""
             else hide(info) end
-        else hide(info) end
+        end
     end
 end
 
-local function scan_metal()
-    local valid = {}
-    for _, model in pairs(workspace:GetChildren()) do
-        if model:FindFirstChild("hidden-metal-prompt") then
-            local part = model:FindFirstChild("Part")
-            if part then
-                local addr = tostring(part)
-                valid[addr] = true
-                if not metalTracks[addr] then
-                    metalTracks[addr] = { root = part, text = newText("Metal", cfg.metal.color), box = newBox(cfg.metal.color) }
-                end
-            end
+local function addMetal(obj)
+    if typeof(obj) ~= "Instance" then return end
+    if obj:FindFirstChild("hidden-metal-prompt") then
+        local part = obj:FindFirstChild("Part")
+        if part and not metalTracks[obj] then
+            metalTracks[obj] = { root = part, text = newText("Metal", cfg.metal.color), box = newBox(cfg.metal.color) }
         end
     end
-    for addr, info in pairs(metalTracks) do
-        if not valid[addr] then info.text:Remove() ; info.box:Remove() ; metalTracks[addr] = nil end
+end
+
+local function removeMetal(obj)
+    if metalTracks[obj] then
+        metalTracks[obj].text:Remove() ; metalTracks[obj].box:Remove()
+        metalTracks[obj] = nil
     end
 end
 
 local function update_metal()
-    for _, info in pairs(metalTracks) do
+    local hrp = getHRP()
+    for obj, info in pairs(metalTracks) do
         local root = info.root
-        if root and root.Position then
-            local hp, on1 = WorldToScreen(root.Position + Vector3.new(0, 2, 0))
-            local lp, on2 = WorldToScreen(root.Position - Vector3.new(0, 2, 0))
-            if on1 and on2 then
+        if not cfg.metal.enabled then hide(info)
+        elseif not root or not root.Parent or not root.Position then
+            hide(info) ; metalTracks[obj] = nil
+        else
+            local dist = hrp and (hrp.Position - root.Position).Magnitude or 0
+            if hrp and dist > cfg.metal.maxDist then hide(info) ; continue end
+            local ok1, hp, on1 = pcall(WorldToScreen, root.Position + Vector3.new(0, 2, 0))
+            local ok2, lp, on2 = pcall(WorldToScreen, root.Position - Vector3.new(0, 2, 0))
+            if ok1 and ok2 and on1 and on2 then
                 local h = math.abs(hp.Y - lp.Y) ; local w = h / 1.5
                 info.box.Position = Vector2.new(hp.X - w/2, hp.Y) ; info.box.Size = Vector2.new(w, h)
-                info.box.Color = cfg.metal.color ; info.box.Visible = true
+                info.box.Color = cfg.metal.color ; info.box.Visible = cfg.metal.box
+                local label = ""
+                if cfg.metal.name then label = "Metal" end
+                if cfg.metal.distance and hrp then label = label .. (cfg.metal.name and "\n" or "") .. math.floor(dist) .. "m" end
                 info.text.Position = Vector2.new(hp.X, hp.Y - 16)
-                info.text.Color = cfg.metal.color ; info.text.Visible = true
+                info.text.Color = cfg.metal.color ; info.text.Text = label ; info.text.Visible = label ~= ""
             else hide(info) end
-        else hide(info) end
+        end
     end
 end
 
-local function scan_elder()
-    local valid = {}
-    for _, model in pairs(workspace:GetChildren()) do
-        if model:FindFirstChild("treeOrb") then
-            local part = model:FindFirstChild("Spirit")
-            if part then
-                local addr = tostring(part)
-                valid[addr] = true
-                if not elderTracks[addr] then
-                    elderTracks[addr] = { root = part, text = newText("Spirit", cfg.elder.color), box = newBox(cfg.elder.color) }
-                end
-            end
+local function addElder(obj)
+    if typeof(obj) ~= "Instance" then return end
+    if obj:FindFirstChild("treeOrb") then
+        local part = obj:FindFirstChild("Spirit")
+        if part and not elderTracks[obj] then
+            elderTracks[obj] = { root = part, text = newText("Spirit", cfg.elder.color), box = newBox(cfg.elder.color) }
         end
     end
-    for addr, info in pairs(elderTracks) do
-        if not valid[addr] then info.text:Remove() ; info.box:Remove() ; elderTracks[addr] = nil end
+end
+
+local function removeElder(obj)
+    if elderTracks[obj] then
+        elderTracks[obj].text:Remove() ; elderTracks[obj].box:Remove()
+        elderTracks[obj] = nil
     end
 end
 
 local function update_elder()
-    for _, info in pairs(elderTracks) do
+    local hrp = getHRP()
+    for obj, info in pairs(elderTracks) do
         local root = info.root
-        if root and root.Position then
-            local hp, on1 = WorldToScreen(root.Position + Vector3.new(0, 2, 0))
-            local lp, on2 = WorldToScreen(root.Position - Vector3.new(0, 2, 0))
-            if on1 and on2 then
+        if not cfg.elder.enabled then hide(info)
+        elseif not root or not root.Parent or not root.Position then
+            hide(info) ; elderTracks[obj] = nil
+        else
+            local dist = hrp and (hrp.Position - root.Position).Magnitude or 0
+            if hrp and dist > cfg.elder.maxDist then hide(info) ; continue end
+            local ok1, hp, on1 = pcall(WorldToScreen, root.Position + Vector3.new(0, 2, 0))
+            local ok2, lp, on2 = pcall(WorldToScreen, root.Position - Vector3.new(0, 2, 0))
+            if ok1 and ok2 and on1 and on2 then
                 local h = math.abs(hp.Y - lp.Y) ; local w = h / 1.5
                 info.box.Position = Vector2.new(hp.X - w/2, hp.Y) ; info.box.Size = Vector2.new(w, h)
-                info.box.Color = cfg.elder.color ; info.box.Visible = true
+                info.box.Color = cfg.elder.color ; info.box.Visible = cfg.elder.box
+                local label = ""
+                if cfg.elder.name then label = "Spirit" end
+                if cfg.elder.distance and hrp then label = label .. (cfg.elder.name and "\n" or "") .. math.floor(dist) .. "m" end
                 info.text.Position = Vector2.new(hp.X, hp.Y - 16)
-                info.text.Color = cfg.elder.color ; info.text.Visible = true
+                info.text.Color = cfg.elder.color ; info.text.Text = label ; info.text.Visible = label ~= ""
             else hide(info) end
-        else hide(info) end
+        end
     end
 end
 
-local function scan_star()
-    local valid = {}
-    for _, model in pairs(workspace:GetChildren()) do
-        if model:FindFirstChild("stars_ProximityPrompt") then
-            local part = model:FindFirstChild("RootPart")
-            if part then
-                local addr = tostring(part)
-                valid[addr] = true
-                if not starTracks[addr] then
-                    starTracks[addr] = { root = part, text = newText(part.Parent and part.Parent.Name or "Star", cfg.star.color), box = newBox(cfg.star.color) }
-                end
-            end
+local function addStar(obj)
+    if typeof(obj) ~= "Instance" then return end
+    if obj:FindFirstChild("stars_ProximityPrompt") then
+        local part = obj:FindFirstChild("RootPart")
+        if part and not starTracks[obj] then
+            starTracks[obj] = { root = part, text = newText(part.Parent and part.Parent.Name or "Star", cfg.star.color), box = newBox(cfg.star.color) }
         end
     end
-    for addr, info in pairs(starTracks) do
-        if not valid[addr] then info.text:Remove() ; info.box:Remove() ; starTracks[addr] = nil end
+end
+
+local function removeStar(obj)
+    if starTracks[obj] then
+        starTracks[obj].text:Remove() ; starTracks[obj].box:Remove()
+        starTracks[obj] = nil
     end
 end
 
 local function update_star()
-    for _, info in pairs(starTracks) do
+    local hrp = getHRP()
+    for obj, info in pairs(starTracks) do
         local root = info.root
-        if root and root.Position then
-            local hp, on1 = WorldToScreen(root.Position + Vector3.new(0, 2, 0))
-            local lp, on2 = WorldToScreen(root.Position - Vector3.new(0, 2, 0))
-            if on1 and on2 then
+        if not cfg.star.enabled then hide(info)
+        elseif not root or not root.Parent or not root.Position then
+            hide(info) ; starTracks[obj] = nil
+        else
+            local dist = hrp and (hrp.Position - root.Position).Magnitude or 0
+            if hrp and dist > cfg.star.maxDist then hide(info) ; continue end
+            local ok1, hp, on1 = pcall(WorldToScreen, root.Position + Vector3.new(0, 2, 0))
+            local ok2, lp, on2 = pcall(WorldToScreen, root.Position - Vector3.new(0, 2, 0))
+            if ok1 and ok2 and on1 and on2 then
                 local h = math.abs(hp.Y - lp.Y) ; local w = h / 1.5
                 info.box.Position = Vector2.new(hp.X - w/2, hp.Y) ; info.box.Size = Vector2.new(w, h)
-                info.box.Color = cfg.star.color ; info.box.Visible = true
+                info.box.Color = cfg.star.color ; info.box.Visible = cfg.star.box
+                local label = ""
+                if cfg.star.name then label = info.text.Text ~= "" and info.text.Text:match("^[^\n]+") or "Star" end
+                if cfg.star.distance and hrp then label = label .. (cfg.star.name and "\n" or "") .. math.floor(dist) .. "m" end
                 info.text.Position = Vector2.new(hp.X, hp.Y - 16)
-                info.text.Color = cfg.star.color ; info.text.Visible = true
+                info.text.Color = cfg.star.color ; info.text.Text = label ; info.text.Visible = label ~= ""
             else hide(info) end
-        else hide(info) end
+        end
     end
 end
 
+for _, obj in pairs(workspace:GetChildren()) do
+    if typeof(obj) == "Instance" then
+        addBee(obj)
+        task.spawn(function()
+            task.wait()
+            if typeof(obj) == "Instance" then
+                addMetal(obj)
+                addElder(obj)
+                addStar(obj)
+            end
+        end)
+    end
+end
+
+local childAddedOk, childAddedConn = pcall(function()
+    return workspace.ChildAdded:Connect(function(obj)
+        if typeof(obj) ~= "Instance" then return end
+        task.spawn(addBee, obj)
+        task.spawn(function()
+            task.wait()
+            if typeof(obj) == "Instance" then
+                addMetal(obj)
+                addElder(obj)
+                addStar(obj)
+            end
+        end)
+    end)
+end)
+
+if childAddedOk then
+    table.insert(_G.bw_connections, childAddedConn)
+else
+    warn("ChildAdded blocked, falling back to polling")
+    local scanTimer = 0
+    table.insert(_G.bw_connections, RunService.Heartbeat:Connect(function(dt)
+        scanTimer = scanTimer + dt
+        if scanTimer >= 2 then
+            scanTimer = 0
+            for _, obj in pairs(workspace:GetChildren()) do
+                if typeof(obj) == "Instance" then
+                    pcall(addBee, obj)
+                    pcall(addMetal, obj)
+                    pcall(addElder, obj)
+                    pcall(addStar, obj)
+                end
+            end
+        end
+    end))
+end
+
+local childRemovedOk, childRemovedConn = pcall(function()
+    return workspace.ChildRemoved:Connect(function(obj)
+        removeBee(obj)
+        removeMetal(obj)
+        removeElder(obj)
+        removeStar(obj)
+    end)
+end)
+
+if childRemovedOk then
+    table.insert(_G.bw_connections, childRemovedConn)
+end
 
 UI.AddTab("Bedwars", function(tab)
 
@@ -205,7 +340,16 @@ UI.AddTab("Bedwars", function(tab)
     sec:ColorPicker("bw_bee_col", 1, 200/255, 0, 1, function(color)
         cfg.bee.color = color
     end)
-    sec:SliderInt("bw_bee_dist", "Bee Distance", 50, 1000, 300, function(val)
+    sec:Toggle("bw_bee_name", "Bee Name", false, function(state)
+        cfg.bee.name = state
+    end)
+    sec:Toggle("bw_bee_box", "Bee Box", false, function(state)
+        cfg.bee.box = state
+    end)
+    sec:Toggle("bw_bee_dist_on", "Bee Distance", false, function(state)
+        cfg.bee.distance = state
+    end)
+    sec:SliderInt("bw_bee_maxdist", "Bee Max Distance", 50, 1000, 300, function(val)
         cfg.bee.maxDist = val
     end)
 
@@ -218,6 +362,18 @@ UI.AddTab("Bedwars", function(tab)
     sec:ColorPicker("bw_metal_col", 180/255, 180/255, 180/255, 1, function(color)
         cfg.metal.color = color
     end)
+    sec:Toggle("bw_metal_name", "Metal Name", false, function(state)
+        cfg.metal.name = state
+    end)
+    sec:Toggle("bw_metal_box", "Metal Box", false, function(state)
+        cfg.metal.box = state
+    end)
+    sec:Toggle("bw_metal_dist", "Metal Distance", false, function(state)
+        cfg.metal.distance = state
+    end)
+    sec:SliderInt("bw_metal_maxdist", "Metal Max Distance", 50, 1000, 300, function(val)
+        cfg.metal.maxDist = val
+    end)
 
     sec:Spacing()
 
@@ -227,6 +383,18 @@ UI.AddTab("Bedwars", function(tab)
     end)
     sec:ColorPicker("bw_elder_col", 180/255, 180/255, 180/255, 1, function(color)
         cfg.elder.color = color
+    end)
+    sec:Toggle("bw_elder_name", "Elder Name", false, function(state)
+        cfg.elder.name = state
+    end)
+    sec:Toggle("bw_elder_box", "Elder Box", false, function(state)
+        cfg.elder.box = state
+    end)
+    sec:Toggle("bw_elder_dist", "Elder Distance", false, function(state)
+        cfg.elder.distance = state
+    end)
+    sec:SliderInt("bw_elder_maxdist", "Elder Max Distance", 50, 1000, 300, function(val)
+        cfg.elder.maxDist = val
     end)
 
     sec:Spacing()
@@ -238,21 +406,24 @@ UI.AddTab("Bedwars", function(tab)
     sec:ColorPicker("bw_star_col", 180/255, 180/255, 180/255, 1, function(color)
         cfg.star.color = color
     end)
+    sec:Toggle("bw_star_name", "Star Name", false, function(state)
+        cfg.star.name = state
+    end)
+    sec:Toggle("bw_star_box", "Star Box", false, function(state)
+        cfg.star.box = state
+    end)
+    sec:Toggle("bw_star_dist", "Star Distance", false, function(state)
+        cfg.star.distance = state
+    end)
+    sec:SliderInt("bw_star_maxdist", "Star Max Distance", 50, 1000, 300, function(val)
+        cfg.star.maxDist = val
+    end)
 
 end)
 
-
-local scanTimer = 0
-scan_bee() ; scan_metal() ; scan_elder() ; scan_star()
-
-_G.bw_heartbeat = RunService.Heartbeat:Connect(function(dt)
-    scanTimer = scanTimer + dt
-    if scanTimer >= 2 then
-        scanTimer = 0
-        scan_bee() ; scan_metal() ; scan_elder() ; scan_star()
-    end
-    if cfg.bee.enabled   then update_bee()   end
-    if cfg.metal.enabled then update_metal() end
-    if cfg.elder.enabled then update_elder() end
-    if cfg.star.enabled  then update_star()  end
+_G.bw_heartbeat = RunService.Heartbeat:Connect(function()
+    if cfg.bee.enabled or next(beeTracks) then update_bee() end
+    if cfg.metal.enabled or next(metalTracks) then update_metal() end
+    if cfg.elder.enabled or next(elderTracks) then update_elder() end
+    if cfg.star.enabled or next(starTracks) then update_star() end
 end)
